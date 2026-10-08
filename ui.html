@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netlens · 流量控制台</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#11141c; --panel2:#161a24; --panel3:#1c212d;
+    --line:#242a38; --line2:#2f3748;
+    --text:#e7eaf1; --dim:#8a93a8; --mut:#5d6679;
+    --acc:#e8b04b; --acc-dim:#7a5c22;
+    --blue:#5b9dff; --green:#3fbf7f; --red:#ef5c5c; --purple:#b183ff; --cyan:#4fc9d6;
+    --mono:"Cascadia Mono","Consolas","JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.5 "Microsoft YaHei UI","Segoe UI",system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+  }
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  input,textarea,select{font:inherit;color:inherit}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2c3344;border-radius:6px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4359}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------------- 顶栏 ---------------- */
+  header{
+    height:52px; display:flex; align-items:center; gap:14px; padding:0 16px;
+    background:linear-gradient(180deg,#141822,#0f121a);
+    border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .brand{font-size:15px;font-weight:600;letter-spacing:.2px;display:flex;align-items:baseline;gap:8px}
+  .brand i{font-style:normal;color:var(--acc)}
+  .brand span{font-size:11px;color:var(--mut);font-weight:400}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;
+    background:var(--panel3);border:1px solid var(--line2);color:var(--dim);
+    padding:3px 8px;border-radius:5px;white-space:nowrap;
+  }
+  .chip b{color:var(--acc);font-weight:500}
+  .chip button{color:var(--blue);font-size:11px;padding:0 2px}
+  .chip button:hover{text-decoration:underline}
+  .chip.warn{color:var(--acc);border-color:var(--acc-dim);background:#221b0d}
+  .chip.ok{color:var(--green);border-color:#24523c}
+  .grow{flex:1}
+  .stat{font-size:11px;color:var(--mut);font-family:var(--mono)}
+  .btn{
+    background:var(--panel3);border:1px solid var(--line2);border-radius:6px;
+    padding:5px 10px;font-size:12px;color:var(--dim);transition:.12s;
+  }
+  .btn:hover{border-color:var(--acc-dim);color:var(--text)}
+  .btn.gold{border-color:var(--acc-dim);color:var(--acc)}
+  .btn.gold:hover{background:#221b0d}
+  .btn.on{background:#221b0d;border-color:var(--acc);color:var(--acc)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ---------------- 主区 ---------------- */
+  main{display:grid;grid-template-columns:minmax(430px,44%) 1fr;height:calc(100vh - 52px);min-height:0}
+  .left{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
+  .right{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel)}
+
+  .toolbar{display:flex;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .toolbar input{
+    flex:1;min-width:0;background:var(--panel3);border:1px solid var(--line2);border-radius:6px;
+    padding:5px 9px;font-size:12px;outline:none;
+  }
+  .toolbar input:focus{border-color:var(--acc-dim)}
+  .seg{display:flex;background:var(--panel3);border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+  .seg button{padding:5px 9px;font-size:11px;color:var(--mut);border-right:1px solid var(--line2)}
+  .seg button:last-child{border-right:none}
+  .seg button:hover{color:var(--text)}
+  .seg button.on{background:#221b0d;color:var(--acc)}
+
+  .thead,.row{
+    display:grid;grid-template-columns:52px minmax(0,1fr) 46px 58px 62px;
+    gap:8px;align-items:center;padding:0 12px;
+  }
+  .thead{
+    height:28px;font-size:11px;color:var(--mut);border-bottom:1px solid var(--line);
+    background:var(--panel2);flex:0 0 auto;letter-spacing:.4px;
+  }
+  .rows{overflow-y:auto;flex:1;min-height:0}
+  .row{
+    height:38px;border-bottom:1px solid #171b24;cursor:pointer;font-size:12px;
+    border-left:2px solid transparent;
+  }
+  .row:hover{background:#151924}
+  .row.sel{background:#1a2030;border-left-color:var(--acc)}
+  .row.mock{background:linear-gradient(90deg,#221b0d,#151924 60%)}
+  .row.mock.sel{background:#2a2110}
+  .m{font-family:var(--mono);font-size:10px;text-align:center;padding:2px 0;border-radius:4px;color:#0b0d12;font-weight:600}
+  .m.GET{background:#3fbf7f}.m.POST{background:#e8b04b}.m.PUT{background:#5b9dff}
+  .m.DELETE{background:#ef5c5c}.m.PATCH{background:#b183ff}.m.HEAD{background:#8a93a8}
+  .m.OPTIONS{background:#4fc9d6}.m.WS{background:#b183ff}.m.TCP{background:#5d6679}
+  .u{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .u .h{color:var(--text)}
+  .u .p{color:var(--mut);font-family:var(--mono);font-size:11px}
+  .u .id{color:#4a5266;font-size:10px;font-family:var(--mono);margin-left:6px}
+  .u .tag{
+    font-size:10px;padding:0 4px;border-radius:3px;margin-left:5px;
+    border:1px solid var(--line2);color:var(--dim);font-family:var(--mono);
+  }
+  .u .tag.ws{color:var(--purple);border-color:#3d2f5c}
+  .u .tag.tcp{color:var(--mut)}
+  .u .tag.lock{color:var(--acc);border-color:var(--acc-dim)}
+  .u .tag.err{color:var(--red);border-color:#5c2b2b}
+  .s{font-family:var(--mono);font-size:11px;text-align:right}
+  .s.c2{color:var(--green)}.s.c3{color:var(--cyan)}.s.c4{color:var(--acc)}.s.c5{color:var(--red)}
+  .s.c101{color:var(--purple)}.s.c0{color:var(--mut)}
+  .t,.z{font-family:var(--mono);font-size:11px;color:var(--dim);text-align:right}
+  .empty{padding:40px;text-align:center;color:var(--mut)}
+
+  /* ---------------- 详情 ---------------- */
+  .d-head{padding:12px 16px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .d-title{display:flex;align-items:flex-start;gap:10px}
+  .d-url{font-family:var(--mono);font-size:12.5px;word-break:break-all;line-height:1.7;flex:1}
+  .d-url .sch{color:var(--mut)}
+  .d-url .h{color:var(--acc)}
+  .d-act{display:flex;gap:6px;flex:0 0 auto}
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--line2);color:var(--dim)}
+  .pill.ok{color:var(--green);border-color:#24523c}
+  .pill.warn{color:var(--acc);border-color:var(--acc-dim)}
+  .pill.bad{color:var(--red);border-color:#5c2b2b}
+
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+  .meta div{background:var(--panel);padding:6px 16px;font-size:11px;color:var(--mut)}
+  .meta b{display:block;color:var(--text);font-weight:400;font-family:var(--mono);margin-top:1px;word-break:break-all}
+
+  .tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel2);flex:0 0 auto;overflow-x:auto}
+  .tabs button{padding:8px 12px;font-size:12px;color:var(--mut);border-bottom:2px solid transparent;white-space:nowrap}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.on{color:var(--acc);border-bottom-color:var(--acc)}
+  .tabs button b{color:var(--acc);font-weight:500;font-size:10px}
+  .d-body{overflow:auto;flex:1;min-height:0;padding:12px 16px 40px}
+  h4{margin:14px 0 6px;font-size:11px;color:var(--mut);font-weight:500;letter-spacing:.6px;text-transform:uppercase}
+  h4:first-child{margin-top:0}
+  table.kv{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px}
+  table.kv td{padding:3px 0;vertical-align:top;border-bottom:1px solid #191d27}
+  table.kv td.k{color:var(--cyan);width:38%;padding-right:12px;word-break:break-all}
+  table.kv td.v{color:var(--text);word-break:break-all}
+  pre{
+    margin:0;background:#0d1017;border:1px solid var(--line);border-radius:6px;
+    padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+    overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:520px;overflow-y:auto;
+  }
+  pre.raw{color:#c8d0e0}
+  .note{font-size:11px;color:var(--mut);margin:6px 0 0}
+  .filecard{display:flex;align-items:center;gap:12px;background:#0d1017;border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+  .filecard .fi{font-size:20px;color:var(--acc);line-height:1}
+  .filecard .ft{font-size:12.5px;color:var(--text)}
+  .filecard .fs{font-size:11px;color:var(--mut);font-family:var(--mono);margin-top:3px}
+  .filecard .fn{margin-left:auto;font-size:11px;color:var(--mut);white-space:nowrap}
+  .filecard .fact{margin-left:auto;display:flex;gap:6px;align-items:center;flex:0 0 auto}
+  .filecard .fact .btn{padding:3px 9px;font-size:11px}
+  pre.bintext{max-height:420px;color:#9aa5bb}
+  .warnbox{
+    background:#221b0d;border:1px solid var(--acc-dim);color:var(--acc);
+    border-radius:6px;padding:8px 10px;font-size:11.5px;margin:8px 0;
+  }
+  .frame{border:1px solid var(--line);border-radius:6px;margin-bottom:6px;overflow:hidden}
+  .frame .fh{display:flex;gap:8px;align-items:center;padding:5px 9px;background:var(--panel2);font-family:var(--mono);font-size:11px}
+  .frame .fh .dir{color:var(--purple);font-weight:600}
+  .frame .fh .dir.s2c{color:var(--cyan)}
+  .frame .fh .op{color:var(--text)}
+  .frame .fh .len{color:var(--mut);margin-left:auto}
+  .frame pre{border:none;border-radius:0;max-height:280px}
+
+  /* ---------------- 抽屉 / 弹窗 ---------------- */
+  .drawer{
+    position:fixed;top:52px;right:0;bottom:0;width:520px;max-width:92vw;
+    background:var(--panel);border-left:1px solid var(--line2);
+    transform:translateX(102%);transition:transform .22s ease;z-index:40;
+    display:flex;flex-direction:column;box-shadow:-18px 0 40px rgba(0,0,0,.5);
+  }
+  .drawer.open{transform:none}
+  .drawer.wide{width:660px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#4a5266;margin-right:7px;vertical-align:1px}
+  .dot.on{background:var(--green);box-shadow:0 0 7px #3fbf7f}
+  .dot.warn{background:var(--acc);box-shadow:0 0 7px #e8b04b}
+  .mstat{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+  .mstat div{background:var(--panel);padding:8px 16px;font-size:11px;color:var(--mut)}
+  .mstat b{display:block;color:var(--text);font-weight:400;font-family:var(--mono);margin-top:2px;word-break:break-all}
+  /* 撑满抽屉剩余高度：日志面板放在整屏高的抽屉里，
+     如果还按固定高度截断，下面一大片就白空着了 */
+  /* max-height 必须显式覆盖：上面那条通用的 pre{max-height:520px} 会把它截住，
+     结果就是"日志只有半屏高、下面一大片空的" */
+  #mlog{flex:1;min-height:200px;max-height:none;overflow:auto;background:#0a0c11;font-size:11px;line-height:1.55}
+
+  .ctxmenu{
+    position:fixed;z-index:80;min-width:170px;background:var(--panel2);
+    border:1px solid var(--line2);border-radius:8px;padding:4px;
+    box-shadow:0 12px 32px rgba(0,0,0,.55);display:flex;flex-direction:column;
+  }
+  .ctxmenu button{text-align:left;padding:7px 10px;border-radius:5px;font-size:12px;color:var(--text)}
+  .ctxmenu button:hover{background:#232a38}
+  .ctxmenu button.danger{color:var(--acc)}
+  .ctxmenu hr{border:none;border-top:1px solid var(--line);margin:4px 2px}
+  .msec{padding:12px 16px;border-bottom:1px solid var(--line)}
+  .msec h4{margin:0 0 8px}
+  .cfg{width:100%;background:#0d1017;border:1px solid var(--line);border-radius:6px;color:#c8d0e0;
+       font-family:var(--mono);font-size:11.5px;line-height:1.6;padding:9px 11px;resize:vertical;outline:none}
+  .cfg:focus{border-color:var(--acc-dim)}
+  .dbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .dbar h3{margin:0;font-size:13px;font-weight:600}
+  .rule{border-bottom:1px solid #191d27;padding:10px 16px}
+  .rule.off{opacity:.5}
+  .rule .rt{display:flex;align-items:center;gap:8px}
+  .rule .rn{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rule .rp{font-family:var(--mono);font-size:11px;color:var(--cyan);margin-top:3px;word-break:break-all}
+  .rule .rm{font-size:10.5px;color:var(--mut);margin-top:3px;font-family:var(--mono)}
+  .rule .ra{display:flex;gap:6px;margin-top:7px}
+  .rule .ra button{font-size:11px;color:var(--dim);border:1px solid var(--line2);border-radius:5px;padding:2px 8px}
+  .rule .ra button:hover{color:var(--text);border-color:var(--acc-dim)}
+  .sw{width:34px;height:18px;border-radius:10px;background:#2b3242;position:relative;transition:.15s;flex:0 0 auto}
+  .sw:after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#7c869c;transition:.15s}
+  .sw.on{background:#4a3a14}.sw.on:after{left:18px;background:var(--acc)}
+
+  .mask{position:fixed;inset:0;background:rgba(4,6,10,.66);z-index:50;display:none;align-items:center;justify-content:center;padding:24px}
+  .mask.open{display:flex}
+  .modal{
+    width:min(860px,96vw);max-height:92vh;background:var(--panel);border:1px solid var(--line2);
+    border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6);
+  }
+  .mbar{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line)}
+  .mbar h3{margin:0;font-size:13px;font-weight:600;flex:1}
+  .mbody{padding:16px 18px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-size:11px;color:var(--mut)}
+  .fld input,.fld textarea{
+    background:var(--panel3);border:1px solid var(--line2);border-radius:6px;padding:7px 9px;
+    font-family:var(--mono);font-size:12px;outline:none;width:100%;
+  }
+  .fld input:focus,.fld textarea:focus{border-color:var(--acc-dim)}
+  .fld textarea{resize:vertical;line-height:1.6}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .opts{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--dim)}
+  .opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+  .opts input{accent-color:var(--acc)}
+  .mfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line);background:var(--panel2)}
+  .prim{background:var(--acc);color:#0b0d12;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600}
+  .prim:hover{background:#f2bd5f}
+  .mfoot .btn{padding:7px 14px}
+
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+  .toast{
+    background:#1d2330;border:1px solid var(--line2);border-left:3px solid var(--acc);
+    padding:9px 14px;border-radius:6px;font-size:12px;color:var(--text);
+    box-shadow:0 10px 30px rgba(0,0,0,.5);animation:in .18s ease;
+  }
+  .toast.bad{border-left-color:var(--red)}
+  .toast.good{border-left-color:var(--green)}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><i>◆</i>netlens<span>流量控制台</span></div>
+  <div class="chips" id="chips"></div>
+  <div class="grow"></div>
+  <div class="stat" id="stat"></div>
+  <button class="btn" id="btnTun"><span class="dot" id="mDot"></span><span id="tunText">启动 TUN</span></button>
+  <button class="btn" id="btnLog">日志</button>
+  <button class="btn" id="btnMihomo">TUN 设置</button>
+  <button class="btn gold" id="btnRules">锁定规则 <b id="ruleCount">0</b></button>
+</header>
+
+<main>
+  <section class="left">
+    <div class="toolbar">
+      <input id="q" placeholder="过滤：域名 / 路径 / 方法 / 状态码">
+      <div class="seg" id="segKind">
+        <button data-k="all" class="on">全部</button>
+        <button data-k="http">HTTP</button>
+        <button data-k="ws">WS</button>
+        <button data-k="tcp">透传</button>
+        <button data-k="mock">锁定</button>
+        <button data-k="blocked">屏蔽</button>
+      </div>
+      <button class="btn" id="btnClear">清空</button>
+    </div>
+    <div class="thead"><span>方法</span><span>地址</span><span>状态</span><span>耗时</span><span>大小</span></div>
+    <div class="rows" id="rows"><div class="empty">等待流量… 把代理指向左上角显示的地址</div></div>
+  </section>
+  <section class="right" id="detail">
+    <div class="empty">从左侧选择一条记录，查看请求头 / 响应头 / 内容 / WebSocket 帧</div>
+  </section>
+</main>
+
+<div class="drawer" id="drawer"></div>
+<div class="drawer wide" id="mdrawer"></div>
+<div class="drawer" id="ldrawer"></div>
+<div class="drawer" id="tdrawer"></div>
+<div class="drawer" id="bdrawer"></div>
+<div class="mask" id="mask"></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S = {recs:new Map(), order:[], els:new Map(), sel:0, tab:'overview', q:'', kind:'all',
+           rules:[], status:null, mihomo:null, detailTouched:false,
+           blocked:[], blockedKeys:new Set(), textOpen:{}};
+
+const MAX_ROWS = 800;
+
+/* ---------------- 工具 ---------------- */
+function human(n){
+  n = Number(n||0);
+  if(n < 1024) return n + ' B';
+  if(n < 1048576) return (n/1024).toFixed(1) + ' K';
+  return (n/1048576).toFixed(2) + ' M';
+}
+function statusClass(c){ return c===101?'c101':(c>=500?'c5':c>=400?'c4':c>=300?'c3':c>=200?'c2':'c0'); }
+function blobText(b){ if(!b) return ''; if(b.binary) return ''; return b.text || ''; }
+function looksJson(t){ t=(t||'').trim(); return t.startsWith('{') || t.startsWith('['); }
+function prettyBody(t){
+  if(!looksJson(t)) return t;
+  try { return JSON.stringify(JSON.parse(t), null, 2); } catch(e){ return t; }
+}
+function fmtTime(iso){
+  if(!iso) return '-';
+  const d = new Date(iso);
+  if(isNaN(d)) return '-';
+  const p = n => String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'.'+String(d.getMilliseconds()).padStart(3,'0');
+}
+function toast(msg, kind){
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind||'');
+  el.textContent = msg;
+  $('#toast').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }, 2600);
+}
+function headersOf(pairs){
+  return (pairs||[]).map(kv => '<tr><td class="k">'+esc(kv[0])+'</td><td class="v">'+esc(kv[1])+'</td></tr>').join('');
+}
+// 二进制内容一律只说"这是个什么文件"，不展示内容
+function fileLabel(ct){
+  ct = (ct||'').toLowerCase();
+  if(ct.startsWith('image/')) return '图片';
+  if(ct.startsWith('video/')) return '视频';
+  if(ct.startsWith('audio/')) return '音频';
+  if(ct.startsWith('font/')) return '字体';
+  if(ct.indexOf('pdf')>=0) return 'PDF 文档';
+  if(ct.indexOf('zip')>=0||ct.indexOf('compressed')>=0||ct.indexOf('tar')>=0) return '压缩包';
+  if(ct.indexOf('protobuf')>=0) return 'Protobuf 数据';
+  if(ct.indexOf('wasm')>=0) return 'WebAssembly';
+  if(ct.indexOf('grpc')>=0) return 'gRPC 数据';
+  if(ct.indexOf('octet-stream')>=0) return '二进制文件';
+  return '文件';
+}
+// 把二进制内容按文本方式还原出来（能看懂多少算多少）
+function blobToTextRaw(blob){
+  if(!blob) return '';
+  if(!blob.binary) return blob.text || '';
+  try{
+    const bin = atob(blob.b64 || '');
+    const arr = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    let s = bin;
+    if(typeof TextDecoder !== 'undefined'){
+      try{ s = new TextDecoder('utf-8', {fatal:false}).decode(arr); }catch(e){ s = bin; }
+    }
+    // 超长内容不往页面上灌，否则一展开就卡死
+    if(s.length > 262144) s = s.slice(0, 262144) + '\n\n…（内容过长，只显示前 256 KB，完整内容请用「下载」）';
+    return s;
+  }catch(e){
+    return '（内容无法解码，请用「下载」）';
+  }
+}
+function toggleBinText(rid, which){
+  const key = which + ':' + rid;
+  S.textOpen[key] = !S.textOpen[key];
+  showDetail(rid, true);
+}
+function downloadBody(rid, which){
+  location.href = '/api/records/' + rid + '/body?which=' + which;
+}
+
+// 文件（图片/音视频/压缩包…）默认不铺内容，给两个按钮：按文本看 / 下载
+function fileCard(rec, which, file, blob){
+  const ct  = file.contentType || '未知类型';
+  const key = which + ':' + rec.id;
+  const open = !!S.textOpen[key];
+  const has  = !!(blob && blob.len > 0);
+
+  let h = '<div class="filecard"><span class="fi">▣</span>'+
+    '<div><div class="ft">'+esc(fileLabel(ct))+'</div>'+
+    '<div class="fs">'+esc(ct)+' · '+human(file.size)+'</div></div>'+
+    '<div class="fact">'+
+      (has
+        ? '<button class="btn" data-act="text" data-rid="'+rec.id+'" data-which="'+which+'">'+
+            (open ? '收起文本' : '查看文本')+'</button>'+
+          '<button class="btn" data-act="dl" data-rid="'+rec.id+'" data-which="'+which+'">下载</button>'
+        : '<span class="fn">内容未抓取</span>')+
+    '</div></div>';
+
+  if(open && has){
+    h += '<div class="note" style="margin-top:6px">按文本方式显示原始内容；二进制字节会显示成乱码，能看懂的部分就是能看懂的。</div>'+
+         '<pre class="bintext">'+esc(blobToTextRaw(blob))+'</pre>';
+  }
+  return h;
+}
+function bodyBlock(title, rec, which){
+  const blob = which === 'req' ? rec.reqBody : rec.respBody;
+  const file = which === 'req' ? rec.reqFile : rec.respFile;
+  const decTxt = which === 'req'
+    ? (rec.reqDecoded ? blobText(rec.reqBodyDecoded) : '')
+    : (rec.respDecoded ? blobText(rec.respBodyDecoded) : '');
+  const note = (which === 'req' ? rec.reqDecoded : rec.respDecoded) ? '已解压' : '';
+
+  if(file) return '<h4>'+esc(title)+'</h4>'+fileCard(rec, which, file, blob);
+  // 没被识别成文件、但内容本身也不是文本（比如没有 Content-Type 的二进制）
+  if(blob && blob.binary && !decTxt){
+    return '<h4>'+esc(title)+'</h4>'+fileCard(rec, which, {contentType:'', size: blob.len}, blob);
+  }
+
+  const text = decTxt || blobText(blob);
+  if(!blob || (!blob.len && !text)) return '<h4>'+esc(title)+'</h4><div class="note">（空）</div>';
+  return '<h4>'+esc(title)+' <span class="note" style="text-transform:none">'+human(blob.len||text.length)+
+         (note?' · '+esc(note):'')+'</span></h4><pre>'+esc(prettyBody(text))+'</pre>';
+}
+
+/* ---------------- 列表 ---------------- */
+function rowHTML(r){
+  const m = r.kind==='tcp' ? 'TCP' : (r.kind==='ws' ? 'WS' : (r.method||'GET'));
+  const st = r.status ? r.status : (r.err ? 'ERR' : '…');
+  const stCls = r.err ? 'c5' : statusClass(r.status);
+  let tags = '';
+  if(r.kind==='ws') tags += '<span class="tag ws">WS</span>';
+  if(r.kind==='tcp') tags += '<span class="tag tcp">透传</span>';
+  if(r.mocked) tags += '<span class="tag lock">已锁定</span>';
+  if(r.err) tags += '<span class="tag err">ERR</span>';
+  const path = r.path + (r.query ? '?' + r.query : '');
+  return '<span class="m '+esc(m)+'">'+esc(m.slice(0,7))+'</span>'+
+    '<span class="u" title="'+esc(r.url)+'"><span class="h">'+esc(r.host)+'</span>'+
+      '<span class="p">'+esc(path)+'</span><span class="id">#'+r.id+'</span>'+tags+'</span>'+
+    '<span class="s '+stCls+'">'+esc(String(st))+'</span>'+
+    '<span class="t">'+(r.durMs?Math.round(r.durMs)+'ms':'')+'</span>'+
+    '<span class="z">'+((r.respSize||r.reqSize)?human(r.respSize||r.reqSize):'')+'</span>';
+}
+function mkRow(r){
+  const el = document.createElement('div');
+  el.className = 'row' + (r.mocked?' mock':'') + (r.id===S.sel?' sel':'');
+  el.dataset.id = r.id;
+  el.innerHTML = rowHTML(r);
+  el.style.display = visible(r) ? '' : 'none';
+  return el;
+}
+// 屏蔽粒度是**整个域名**：它下面所有路径都不再展示。
+// 按路径匹配的话，同一个站点每个接口都要点一次，实际用下来很烦。
+function isBlocked(r){
+  return S.blockedKeys.has((r.host||'').toLowerCase());
+}
+function blockedItem(r){
+  const h = (r.host||'').toLowerCase();
+  return S.blocked.find(b => (b.host||'').toLowerCase() === h);
+}
+function matchQuery(r){
+  if(!S.q) return true;
+  const hay = (r.url+' '+r.host+' '+r.path+' '+r.method+' '+r.status+' '+(r.query||'')).toLowerCase();
+  return hay.indexOf(S.q) >= 0;
+}
+function visible(r){
+  const blocked = isBlocked(r);
+  // 屏蔽过的请求只出现在「屏蔽」这一栏，其余栏位一律看不到
+  if(S.kind==='blocked') return blocked && matchQuery(r);
+  if(blocked) return false;
+  if(S.kind==='http' && r.kind!=='http') return false;
+  if(S.kind==='ws' && r.kind!=='ws') return false;
+  if(S.kind==='tcp' && r.kind!=='tcp') return false;
+  if(S.kind==='mock' && !r.mocked) return false;
+  return matchQuery(r);
+}
+function addRecords(list){
+  const rows = $('#rows');
+  if(S.order.length === 0) rows.innerHTML = '';
+  for(const r of list){
+    if(S.recs.has(r.id)) continue;
+    S.recs.set(r.id, r);
+    S.order.unshift(r.id);
+    const el = mkRow(r);
+    S.els.set(r.id, el);
+    rows.prepend(el);
+  }
+  while(S.order.length > MAX_ROWS){
+    const id = S.order.pop();
+    const el = S.els.get(id);
+    if(el) el.remove();
+    S.els.delete(id); S.recs.delete(id);
+  }
+  updateStat();
+}
+function updRecords(list){
+  for(const r of list){
+    const old = S.recs.get(r.id);
+    if(!old) continue;
+    S.recs.set(r.id, r);
+    const el = S.els.get(r.id);
+    if(el){
+      el.className = 'row' + (r.mocked?' mock':'') + (r.id===S.sel?' sel':'');
+      el.innerHTML = rowHTML(r);
+      el.style.display = visible(r) ? '' : 'none';
+    }
+    // 选中的记录刚跑完 → 自动刷新详情（保留当前标签页）
+    if(r.id === S.sel && !old.end && r.end) showDetail(r.id, true);
+  }
+  updateStat();
+}
+function rerender(){
+  const rows = $('#rows');
+  rows.innerHTML = '';
+  if(S.order.length === 0 && S.recs.size === 0){
+    rows.innerHTML = '<div class="empty">等待流量… 把代理指向左上角显示的地址</div>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  for(const id of S.order){
+    const r = S.recs.get(id);
+    if(!r) continue;
+    const el = S.els.get(id) || mkRow(r);
+    S.els.set(id, el);
+    el.style.display = visible(r) ? '' : 'none';
+    if(visible(r)) shown++;
+    frag.appendChild(el);
+  }
+  rows.appendChild(frag);
+  if(shown === 0) toast('当前过滤条件下没有记录');
+  updateStat();
+}
+function updateStat(){
+  let shown = 0;
+  for(const id of S.order){ const r = S.recs.get(id); if(r && visible(r)) shown++; }
+  const st = S.status || {};
+  const mem = st.memBytes ? human(st.memBytes) : '';
+  let txt = shown + ' / ' + S.recs.size + ' 条' + (mem ? ' · ' + mem : '');
+  // 被过滤掉的两类流量各报一下数量，
+  // 免得出现"明明在跑，页面却一条都没有"的困惑
+  const parts = [];
+  if(st.hiddenTunnels) parts.push(st.hiddenTunnels + ' 条无法解析');
+  if(st.hiddenOptions) parts.push(st.hiddenOptions + ' 条 OPTIONS');
+  if(parts.length) txt += ' · 已过滤 ' + parts.join(' / ');
+  if(S.blocked.length) txt += ' · 屏蔽 ' + S.blocked.length + ' 个域名';
+  $('#stat').textContent = txt;
+  $('#ruleCount').textContent = (S.rules||[]).length;
+}
+
+/* ---------------- SSE ---------------- */
+function connect(){
+  const es = new EventSource('/api/events');
+  es.onmessage = ev => {
+    let msg; try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    if(msg.t === 'batch'){
+      if(msg.rules) loadRules();
+      if(msg.clear){ S.recs.clear(); S.order=[]; S.els.clear(); }
+      if(msg.add) addRecords(msg.add);
+      if(msg.upd) updRecords(msg.upd);
+      if(msg.clear) rerender();
+      if(msg.log){ appendMLog(msg.log); S.mlogTotal = (S.mlogTotal||0) + msg.log.length; }
+      if(msg.stat) loadMihomo();
+    } else if(msg.t === 'resync'){ reload(); }
+  };
+}
+
+/* ---------------- 详情 ---------------- */
+async function showDetail(id, keepTab){
+  S.sel = id;
+  S.detailTouched = true;
+  for(const [rid, el] of S.els) el.classList.toggle('sel', rid === id);
+  let data;
+  try{
+    const res = await fetch('/api/records/' + id);
+    if(!res.ok){ toast('记录已不存在（可能被淘汰）', 'bad'); return; }
+    data = await res.json();
+  }catch(e){ return; }
+  if(keepTab && S.sel === id){ renderDetail(data, true); }
+  else { S.tab = 'overview'; renderDetail(data, false); }
+}
+function tabBar(rec){
+  const tabs = [['overview','概览'], ['req','请求'], ['resp','响应']];
+  if(rec.frames && rec.frames.length) tabs.push(['frames','WS 帧']);
+  tabs.push(['raw','原始']);
+  return '<div class="tabs">' + tabs.map(([k,label]) => {
+    const extra = (k==='frames') ? ' <b>' + rec.frames.length + '</b>' : '';
+    return '<button data-tab="'+k+'" class="'+(S.tab===k?'on':'')+'">'+label+extra+'</button>';
+  }).join('') + '</div>';
+}
+function renderDetail(data, keepTab){
+  const rec = data.record;
+  S.rules = data.rules || S.rules;
+  const pane = $('#detail');
+  // 先算出来：下面拼 body 时要用，声明晚了会踩 TDZ
+  const blk = blockedItem(rec);
+  // body 的渲染统一交给 bodyBlock，这里不再单独取文本
+
+  const statusPill = rec.err
+    ? '<span class="pill bad">'+(rec.status||'ERR')+'</span>'
+    : rec.status ? '<span class="pill '+(rec.status<400?'ok':rec.status<500?'warn':'bad')+'">'+rec.status+'</span>'
+                 : '<span class="pill">进行中</span>';
+
+  let head = '<div class="d-head"><div class="d-title"><div class="d-url">'+
+    '<span class="sch">'+esc(rec.method)+' </span><span class="h">'+esc(rec.host+(rec.port&&!isDefPort(rec.scheme,rec.port)?':'+rec.port:''))+'</span>'+
+    esc(rec.path+(rec.query?'?'+rec.query:''))+'</div>'+
+    '<div class="d-act">'+statusPill+'<button class="btn" id="btnCopy">复制 URL</button>'+
+    '<button class="btn" id="btnBlock">屏蔽</button>'+
+    '<button class="btn gold" id="btnLock">编辑响应并锁定</button></div></div></div>';
+
+  const meta = '<div class="meta">'+
+    m('协议判定', rec.proto||'-') + m('入口', (rec.source||'-')+'  '+(rec.client||'')) +
+    m('开始', fmtTime(rec.start)) + m('耗时', rec.durMs?Math.round(rec.durMs)+' ms':'-') +
+    m('请求', human(rec.reqSize)) + m('响应', human(rec.respSize)) +
+    m('锁定', rec.mocked?'规则 #'+rec.ruleId:'未锁定') + '</div>';
+
+  let body = '';
+  if(S.tab === 'overview'){
+    body = (rec.note?'<div class="note">'+esc(rec.note)+'</div>':'') +
+      (rec.err?'<div class="warnbox">'+esc(rec.err)+'</div>':'') +
+      '<h4>请求</h4><table class="kv">'+headersOf(rec.reqHdr)+'</table>'+
+      '<h4>响应</h4><table class="kv">'+headersOf(rec.respHdr)+'</table>'+
+      (rec.mocked?'<div class="warnbox">这条响应来自锁定规则 #'+rec.ruleId+'，netlens 没有访问上游。</div>':'')+
+      (blk ? '<div class="warnbox">'+esc(rec.host)+' 已被屏蔽，只在「屏蔽」那一栏展示（流量照常转发）。</div>' : '');
+  } else if(S.tab === 'req'){
+    body = '<h4>请求行</h4><pre>'+esc(rec.method+' '+rec.path+(rec.query?'?'+rec.query:'')+' HTTP/1.1')+'</pre>'+
+      '<h4>请求头</h4><table class="kv">'+headersOf(rec.reqHdr)+'</table>'+
+      bodyBlock('请求体', rec, 'req')+
+      (rec.reqTrunc?'<div class="warnbox">请求体超过抓取上限（'+human(rec.reqBody.len)+'），只保留了前面一段；转发给上游的数据是完整的。</div>':'');
+  } else if(S.tab === 'resp'){
+    body = '<h4>状态行</h4><pre>'+esc('HTTP/1.1 '+(rec.status||''))+'</pre>'+
+      '<h4>响应头</h4><table class="kv">'+headersOf(rec.respHdr)+'</table>'+
+      bodyBlock('响应体', rec, 'resp')+
+      (rec.respTrunc?'<div class="warnbox">响应体超过抓取上限，只保留了前面一段。</div>':'');
+  } else if(S.tab === 'frames'){
+    body = (rec.frames||[]).map((f,i) => {
+      const txt = blobText(f.payload);
+      const isBin = f.payload && f.payload.binary;
+      return '<div class="frame"><div class="fh">'+
+        '<span class="dir '+(f.dir==='S→C'?'s2c':'')+'">'+esc(f.dir)+'</span>'+
+        '<span class="op">'+esc(f.opcode)+'</span>'+
+        '<span class="len">#'+(i+1)+' · '+human(f.len)+' · '+fmtTime(f.at)+'</span></div>'+
+        (f.len===0 ? '' :
+          isBin ? '<pre>（二进制，'+human(f.payload.len)+'）</pre>' :
+          '<pre>'+esc(prettyBody(txt))+'</pre>') + '</div>';
+    }).join('') || '<div class="note">还没有帧</div>';
+  } else {
+    body = '<h4>请求报文</h4><pre class="raw">'+esc(rec.rawRequest||'')+'</pre>'+
+      '<h4>响应报文</h4><pre class="raw">'+esc(rec.rawResponse||'')+'</pre>';
+  }
+
+  pane.innerHTML = head + meta + tabBar(rec) + '<div class="d-body" id="dbody">'+body+'</div>';
+
+  pane.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; renderDetail(data, true); });
+  // 文件卡片上的「查看文本 / 下载」
+  pane.querySelectorAll('.filecard button[data-act]').forEach(b => {
+    const rid = Number(b.getAttribute('data-rid'));
+    const which = b.getAttribute('data-which');
+    b.onclick = () => {
+      if(b.getAttribute('data-act') === 'dl') downloadBody(rid, which);
+      else toggleBinText(rid, which);
+    };
+  });
+  $('#btnCopy').onclick = () => { navigator.clipboard.writeText(rec.url).then(()=>toast('已复制 URL','good')); };
+
+  const blockBtn = $('#btnBlock');
+  if(blockBtn){
+    blockBtn.textContent = blk ? '取消屏蔽' : '屏蔽域名';
+    blockBtn.classList.toggle('gold', !!blk);
+    blockBtn.title = blk
+      ? '取消后 '+rec.host+' 的请求重新出现在列表里'
+      : '把整个 '+rec.host+' 从列表里藏起来（该域名下所有请求，流量照常转发）';
+    blockBtn.onclick = () => toggleBlock(rec, blk);
+  }
+
+  const lockBtn = $('#btnLock');
+  if(rec.kind !== 'http'){
+    lockBtn.disabled = true;
+    lockBtn.title = rec.kind==='ws'
+      ? 'WebSocket 会话只做观察，暂不支持伪造响应'
+      : '字节透传的连接没有可编辑的 HTTP 响应';
+  } else {
+    lockBtn.onclick = () => openEditor(rec);
+  }
+}
+function m(k,v){ return '<div>'+esc(k)+'<b>'+esc(v==null||v===''?'-':v)+'</b></div>'; }
+function isDefPort(scheme, port){
+  return (scheme==='http'||scheme==='ws') ? port==='80' : port==='443';
+}
+
+/* ---------------- 编辑器 ---------------- */
+function hdrToText(pairs, dropLength){
+  return (pairs||[]).filter(kv => !(dropLength && ['content-encoding','content-length','transfer-encoding'].includes(kv[0].toLowerCase())))
+    .map(kv => kv[0]+': '+kv[1]).join('\n');
+}
+function textToHdr(text){
+  return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const i = l.indexOf(':');
+    if(i < 0) return null;
+    return [l.slice(0,i).trim(), l.slice(i+1).trim()];
+  }).filter(Boolean);
+}
+function openEditor(rec){
+  const respText = rec.respDecoded ? blobText(rec.respBodyDecoded) : blobText(rec.respBody);
+  const isFile = !!rec.respFile;
+  const mask = $('#mask');
+  mask.innerHTML = '<div class="modal">'+
+    '<div class="mbar"><h3>编辑响应 · 锁定 #'+rec.id+'</h3>'+
+      '<button class="btn" id="mX">关闭</button></div>'+
+    '<div class="mbody">'+
+      '<div class="warnbox">保存后，匹配该请求的流量将<span>不再访问上游</span>，'+
+        '一律返回下面这份响应，直到你解除锁定。</div>'+
+      (isFile?'<div class="warnbox">原响应是 '+esc(fileLabel(rec.respFile.contentType))+'（'+human(rec.respFile.size)+
+        '），内容不展示也不可编辑；保存后会用一个文本响应把它替换掉。</div>':'')+
+      '<div class="grid2">'+
+        '<div class="fld"><label>状态码</label><input id="eStatus" value="'+(rec.status||200)+'"></div>'+
+        '<div class="fld"><label>延迟（ms，模拟慢网）</label><input id="eDelay" value="0"></div>'+
+      '</div>'+
+      '<div class="fld"><label>规则名（留空自动生成）</label><input id="eName" placeholder="'+esc(rec.method+' '+rec.host+rec.path)+'"></div>'+
+      '<div class="fld"><label>响应头（每行一条 Key: Value；Content-Length / Content-Encoding 会自动重算）</label>'+
+        '<textarea id="eHdr" rows="4">'+esc(hdrToText(rec.respHdr, true))+'</textarea></div>'+
+      '<div class="fld"><label>响应体</label><textarea id="eBody" rows="12">'+esc(isFile?'':prettyBody(respText))+'</textarea></div>'+
+      '<div class="opts">'+
+        '<label><input type="checkbox" id="eIgnoreQ" checked> 忽略查询串（同一路径的请求都命中）</label>'+
+        '<label><input type="checkbox" id="eMatchBody"> 还要求请求体逐字节相同</label>'+
+      '</div>'+
+      '<div class="note">匹配条件：'+esc((rec.method||'*')+' '+rec.host+':'+rec.port+rec.path+(rec.query?'?'+rec.query:''))+'</div>'+
+    '</div>'+
+    '<div class="mfoot"><button class="btn" id="mCancel">取消</button>'+
+      '<button class="prim" id="mSave">保存并锁定</button></div></div>';
+
+  const close = () => { mask.classList.remove('open'); mask.innerHTML=''; };
+  mask.classList.add('open');
+  $('#mX').onclick = close;
+  $('#mCancel').onclick = close;
+  mask.onclick = e => { if(e.target === mask) close(); };
+  $('#mSave').onclick = async () => {
+    const payload = {
+      fromId: rec.id,
+      name: $('#eName').value.trim(),
+      status: parseInt($('#eStatus').value, 10) || 200,
+      delayMs: parseInt($('#eDelay').value, 10) || 0,
+      hdr: textToHdr($('#eHdr').value),
+      body: { text: $('#eBody').value },
+      ignoreQuery: $('#eIgnoreQ').checked,
+      matchBody: $('#eMatchBody').checked
+    };
+    try{
+      const res = await fetch('/api/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const data = await res.json();
+      if(!res.ok){ toast(data.error || '保存失败', 'bad'); return; }
+      toast('已锁定：' + data.rule.pattern, 'good');
+      close();
+      await loadRules();
+      showDetail(rec.id, true);
+    }catch(e){ toast('保存失败：'+e.message, 'bad'); }
+  };
+}
+
+/* ---------------- 规则面板 ---------------- */
+function openDrawer(){
+  const d = $('#drawer');
+  d.classList.add('open');
+  d.innerHTML = '<div class="dbar"><h3>锁定规则</h3>'+
+      '<span class="note" style="flex:1">命中即返回伪造响应，不再访问上游</span>'+
+      '<button class="btn" id="dX">关闭</button></div>'+
+    '<div class="d-body" id="ruleList" style="flex:1"></div>';
+  $('#dX').onclick = () => d.classList.remove('open');
+  loadRules();
+}
+async function loadRules(){
+  let data;
+  try{ data = await (await fetch('/api/rules')).json(); }catch(e){ return; }
+  S.rules = data.rules || [];
+  updateStat();
+  const box = $('#ruleList');
+  if(!box) return;
+  if(S.rules.length === 0){ box.innerHTML = '<div class="empty">还没有锁定规则。选中一条 HTTP 记录 → 「编辑响应并锁定」。</div>'; return; }
+  box.innerHTML = S.rules.map(r => {
+    const warn = r.kindHint === 'ws' ? '<div class="rm" style="color:var(--acc)">来源是 WebSocket 会话，这条规则不会生效</div>' : '';
+    return '<div class="rule '+(r.enabled?'':'off')+'" data-id="'+r.id+'">'+
+      '<div class="rt"><span class="rn">'+esc(r.name)+'</span>'+
+        '<span class="note">#'+r.id+'</span>'+
+        '<span class="sw '+(r.enabled?'on':'')+'" data-act="toggle"></span></div>'+
+      '<div class="rp">'+esc(r.pattern)+'</div>'+
+      '<div class="rm">命中 '+r.hits+' 次 · 返回 '+r.status+
+        (r.delayMs?' · 延迟 '+r.delayMs+'ms':'')+' · '+(r.body&&r.body.len?human(r.body.len):'空响应体')+
+        (r.lastHit?' · 最近 '+fmtTime(r.lastHit):'')+'</div>'+warn+
+      '<div class="ra"><button data-act="edit">编辑内容</button>'+
+        '<button data-act="del">解除锁定</button></div>'+
+    '</div>';
+  }).join('');
+  // 逐个绑定时一律做空值保护：页面里少一个元素不该让整块面板失去交互
+  const bind = (root, sel, fn) => { const el = root.querySelector(sel); if(el) el.onclick = fn; };
+  box.querySelectorAll('.rule').forEach(el => {
+    const id = Number(el.dataset.id);
+    const rule = S.rules.find(x => x.id === id);
+    if(!rule) return;
+    bind(el, '[data-act="toggle"]', () => patchRule(id, {enabled: !rule.enabled}));
+    bind(el, '[data-act="del"]', () => delRule(id, rule.name));
+    bind(el, '[data-act="edit"]', () => openRuleEditor(rule));
+  });
+}
+async function patchRule(id, patch){
+  const res = await fetch('/api/rules/' + id, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch)});
+  if(!res.ok){ const d = await res.json(); toast(d.error||'操作失败','bad'); return; }
+  toast(patch.enabled===false ? '已暂停规则 #'+id : '已更新规则 #'+id, 'good');
+  loadRules();
+}
+async function delRule(id, name){
+  if(!confirm('解除锁定并删除规则「'+name+'」？')) return;
+  const res = await fetch('/api/rules/' + id, {method:'DELETE'});
+  if(!res.ok){ toast('删除失败','bad'); return; }
+  toast('已解除锁定','good');
+  loadRules();
+}
+function openRuleEditor(rule){
+  const mask = $('#mask');
+  mask.innerHTML = '<div class="modal">'+
+    '<div class="mbar"><h3>编辑规则 #'+rule.id+'</h3><button class="btn" id="rClose">关闭</button></div>'+
+    '<div class="mbody">'+
+      '<div class="fld"><label>规则名</label><input id="rName" value="'+esc(rule.name)+'"></div>'+
+      '<div class="grid2">'+
+        '<div class="fld"><label>状态码</label><input id="rStatus" value="'+rule.status+'"></div>'+
+        '<div class="fld"><label>延迟（ms）</label><input id="rDelay" value="'+(rule.delayMs||0)+'"></div>'+
+      '</div>'+
+      '<div class="fld"><label>匹配条件（不可改，需要改就删掉重新锁定）</label>'+
+        '<input value="'+esc(rule.pattern)+'" disabled></div>'+
+      '<div class="fld"><label>响应头</label><textarea id="rHdr" rows="4">'+esc(hdrToText(rule.hdr, true))+'</textarea></div>'+
+      '<div class="fld"><label>响应体</label><textarea id="rBody" rows="10">'+esc(blobText(rule.body))+'</textarea></div>'+
+    '</div>'+
+    '<div class="mfoot"><button class="btn" id="rCancel">取消</button><button class="prim" id="rSave">保存</button></div></div>';
+  const close = () => { mask.classList.remove('open'); mask.innerHTML=''; };
+  mask.classList.add('open');
+  $('#rClose').onclick = close; $('#rCancel').onclick = close;
+  mask.onclick = e => { if(e.target===mask) close(); };
+  $('#rSave').onclick = async () => {
+    await patchRule(rule.id, {
+      name: $('#rName').value.trim(),
+      status: parseInt($('#rStatus').value,10) || 200,
+      delayMs: parseInt($('#rDelay').value,10) || 0,
+      hdr: textToHdr($('#rHdr').value),
+      body: { text: $('#rBody').value }
+    });
+    close();
+  };
+}
+
+/* ---------------- 屏蔽 / 自动透传 ---------------- */
+async function loadBlocked(){
+  try{
+    const d = await (await fetch('/api/blocked')).json();
+    applyBlocked(d.blocked || []);
+  }catch(e){}
+}
+function applyBlocked(list){
+  S.blocked = list;
+  S.blockedKeys = new Set(list.map(b => (b.host||'').toLowerCase()));
+  renderChips();       // 顶栏那个「已屏蔽 N 个域名」要跟着变
+  renderBlockedList(); // 抽屉开着的话也要跟着变
+  updateStat();
+}
+async function toggleBlock(rec, blk){
+  try{
+    if(blk){
+      const d = await (await fetch('/api/blocked/' + blk.id, {method:'DELETE'})).json();
+      if(d.blocked) applyBlocked(d.blocked);
+      toast('已取消屏蔽域名 ' + rec.host, 'good');
+    }else{
+      const d = await (await fetch('/api/blocked', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({fromId: rec.id})})).json();
+      if(d.error){ toast('屏蔽失败：' + d.error, 'bad'); return; }
+      if(d.blocked) applyBlocked(d.blocked);
+      toast('已屏蔽域名 ' + rec.host + '（该域名下所有请求，流量仍会正常转发）', 'good');
+    }
+    rerender();
+    showDetail(rec.id, true);
+  }catch(e){ toast('操作失败：' + e.message, 'bad'); }
+}
+
+let ctxEl = null;
+function hideCtxMenu(){ if(ctxEl){ ctxEl.remove(); ctxEl = null; } }
+function showCtxMenu(x, y, r){
+  hideCtxMenu();
+  const blk = blockedItem(r);
+  const vw = (typeof window !== 'undefined' && window.innerWidth) || 1200;
+  const vh = (typeof window !== 'undefined' && window.innerHeight) || 800;
+  const m = document.createElement('div');
+  m.className = 'ctxmenu';
+  m.innerHTML =
+    '<button data-a="open">查看详情</button>'+
+    '<button data-a="copy">复制 URL</button>'+
+    (r.kind === 'http' ? '<button data-a="lock">编辑响应并锁定</button>' : '')+
+    '<hr><button data-a="block" class="danger">'+(blk ? '取消屏蔽' : '屏蔽此域名')+'</button>';
+  m.style.left = Math.max(4, Math.min(x, vw - 190)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, vh - 180)) + 'px';
+  m.onclick = ev => {
+    const a = ev.target && ev.target.dataset && ev.target.dataset.a;
+    if(!a) return;
+    hideCtxMenu();
+    if(a === 'open') showDetail(r.id);
+    else if(a === 'copy'){ navigator.clipboard.writeText(r.url); toast('已复制 URL','good'); }
+    else if(a === 'lock') openEditorById(r.id);
+    else if(a === 'block') toggleBlock(r, blk);
+  };
+  document.body.appendChild(m);
+  ctxEl = m;
+}
+// 列表里拿到的是摘要（没有 body），要编辑得先把详情拉回来
+async function openEditorById(id){
+  try{
+    const res = await fetch('/api/records/' + id);
+    if(!res.ok){ toast('记录已不存在', 'bad'); return; }
+    const data = await res.json();
+    openEditor(data.record);
+  }catch(e){ toast('读取记录失败', 'bad'); }
+}
+
+// 屏蔽名单单独给个入口：不然某个域名的记录全被淘汰之后，
+// 在列表里就再也点不到它、也就取消不了屏蔽了
+async function openBlocked(){
+  const d = $('#bdrawer');
+  d.classList.add('open');
+  d.innerHTML = '<div class="dbar"><h3>已屏蔽的域名</h3>'+
+      '<span class="note" style="flex:1">这些域名下的请求不再出现在其他栏位，只在这里显示</span>'+
+      '<button class="btn" id="bX">关闭</button></div>'+
+    '<div class="d-body" id="blkList" style="flex:1"></div>';
+  $('#bX').onclick = () => d.classList.remove('open');
+  renderBlockedList();
+}
+function renderBlockedList(){
+  const box = $('#blkList');
+  if(!box) return;
+  if(!S.blocked.length){
+    box.innerHTML = '<div class="empty">还没有屏蔽任何域名。<br>'+
+      '在记录上点右键，或打开详情点「屏蔽域名」。</div>';
+    return;
+  }
+  box.innerHTML = S.blocked.map(b =>
+    '<div class="rule"><div class="rt"><span class="rn">'+esc(b.host)+'</span></div>'+
+    '<div class="rm">该域名下所有路径都不展示 · 流量照常转发</div>'+
+    '<div class="ra"><button data-id="'+b.id+'">取消屏蔽</button></div></div>').join('');
+  box.querySelectorAll('button[data-id]').forEach(el => {
+    el.onclick = async () => {
+      const d = await (await fetch('/api/blocked/' + el.getAttribute('data-id'), {method:'DELETE'})).json();
+      if(d.blocked) applyBlocked(d.blocked);
+      rerender();
+      renderBlockedList();
+    };
+  });
+}
+
+async function openTunnel(){
+  const d = $('#tdrawer');
+  d.classList.add('open');
+  d.innerHTML = '<div class="dbar"><h3>自动透传的域名</h3>'+
+      '<span class="note" style="flex:1">这些域名中间人握手失败过，之后直接字节透传</span>'+
+      '<button class="btn" id="tX">关闭</button></div>'+
+    '<div class="d-body" id="tunList" style="flex:1"></div>';
+  $('#tX').onclick = () => d.classList.remove('open');
+  loadTunnel();
+}
+async function loadTunnel(){
+  let t;
+  try{ t = await (await fetch('/api/tunnel')).json(); }catch(e){ return; }
+  const box = $('#tunList');
+  if(!box) return;
+  let h = '';
+  if(!t.auto || !t.auto.length){
+    h += '<div class="empty">还没有自动透传的域名。<br>'+
+         '某个域名的中间人握手失败时（比如 Electron 程序不认我们的证书），会自动加到这里。</div>';
+  }else{
+    h += t.auto.map(x =>
+      '<div class="rule"><div class="rt"><span class="rn">'+esc(x)+'</span></div>'+
+      '<div class="rm">命中即直接转发字节，不解密</div>'+
+      '<div class="ra"><button data-host="'+esc(x)+'">移出名单（下次重新尝试解密）</button></div></div>').join('');
+  }
+  if(t.manual && t.manual.length){
+    h += '<div class="msec"><div class="note">命令行 -tunnel 指定的（不可在此删除）：'+esc(t.manual.join('、'))+'</div></div>';
+  }
+  box.innerHTML = h;
+  box.querySelectorAll('button[data-host]').forEach(b => {
+    b.onclick = () => removeTunnel(b.getAttribute('data-host'));
+  });
+}
+async function removeTunnel(host){
+  const d = await (await fetch('/api/tunnel/remove', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({host})})).json();
+  if(d.error){ toast(d.error, 'bad'); return; }
+  toast('已移出：' + host, 'good');
+  loadTunnel();
+}
+
+/* ---------------- 运行日志 ---------------- */
+// 桌面模式下没有控制台窗口，这里就是唯一能看到"程序到底怎么了"的地方，
+// 所以入口放在顶栏而不是塞进 mihomo 面板里。
+function openLog(){
+  const d = $('#ldrawer');
+  d.classList.add('open');
+  if(!$('#mlog')){
+    d.innerHTML = '<div class="dbar"><h3>运行日志</h3>'+
+        '<span class="note" style="flex:1">本程序 + mihomo 的输出</span>'+
+        '<button class="btn" id="lClear">清屏</button>'+
+        '<button class="btn" id="lX">关闭</button></div>'+
+      '<div class="msec" style="flex:1;min-height:0;border-bottom:none;display:flex;flex-direction:column">'+
+        '<pre id="mlog"></pre></div>';
+    $('#lX').onclick = () => d.classList.remove('open');
+    $('#lClear').onclick = () => { $('#mlog').textContent = ''; };
+  }
+  loadMihomoLog(true);
+}
+
+/* ---------------- mihomo（内嵌的 TUN 接管进程） ---------------- */
+function openMihomo(){
+  const d = $('#mdrawer');
+  d.classList.add('open');
+  d.innerHTML = '<div class="dbar"><h3>mihomo · TUN 接管</h3>'+
+      '<span class="note" style="flex:1">让 App 的流量先被接管，再转交给本程序</span>'+
+      '<button class="btn" id="mdX">关闭</button></div>'+
+    '<div id="mHead"></div>'+
+    '<div class="msec"><h4>config.yaml</h4>'+
+      '<textarea id="mCfg" class="cfg" rows="12" spellcheck="false"></textarea>'+
+      '<div class="opts" style="margin-top:8px">'+
+        '<button class="btn" id="mSaveCfg">保存配置</button>'+
+        '<button class="btn" id="mResetCfg">恢复内置默认</button>'+
+        '<span class="note" style="flex:1">proxies 里的 socks5 必须指向本程序的 SOCKS5 端口，否则页面上看不到任何流量</span>'+
+      '</div></div>'+
+    '<div class="msec" style="border-bottom:none">'+
+      '<div class="note">本程序和 mihomo 的输出都在顶栏「日志」里（桌面模式下那是唯一能看到错误的地方）。</div>'+
+      '<div class="opts" style="margin-top:8px"><button class="btn" id="mToLog">打开日志</button></div></div>';
+  $('#mdX').onclick = () => d.classList.remove('open');
+  $('#mToLog').onclick = () => { d.classList.remove('open'); openLog(); };
+  $('#mSaveCfg').onclick = async () => {
+    const res = await fetch('/api/mihomo/config', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({config: $('#mCfg').value})});
+    const data = await res.json();
+    if(!res.ok || data.ok === false){ toast(data.error || '保存失败','bad'); return; }
+    toast('配置已保存', 'good');
+    renderMihomo(data.status);
+  };
+  $('#mResetCfg').onclick = async () => {
+    if(!confirm('用程序内嵌的默认配置覆盖当前 config.yaml？')) return;
+    const data = await (await fetch('/api/mihomo/config/reset', {method:'POST'})).json();
+    if(data.ok === false){ toast(data.error||'重置失败','bad'); return; }
+    $('#mCfg').value = data.config;
+    toast('已恢复默认配置', 'good');
+    renderMihomo(data.status);
+  };
+  loadMihomo().then(() => loadMihomoConfig());
+  loadMihomoLog(true);
+}
+async function loadMihomo(){
+  try{
+    const st = await (await fetch('/api/mihomo')).json();
+    renderMihomo(st);
+    return st;
+  }catch(e){ return null; }
+}
+async function loadMihomoConfig(){
+  try{
+    const d = await (await fetch('/api/mihomo/config')).json();
+    const el = $('#mCfg');
+    if(el) el.value = d.config || '';
+  }catch(e){}
+}
+function renderMihomo(st){
+  if(!st) return;
+  S.mihomo = st;   // 顶栏那个开关要用它判断该启动还是该停止
+
+  const dot = $('#mDot');
+  if(dot) dot.className = 'dot' + (st.running ? ' on' : (st.portMatch ? '' : ' warn'));
+
+  const txt = $('#tunText');
+  if(txt) txt.textContent = st.running ? '停止 TUN' : '启动 TUN';
+
+  const bt = $('#btnTun');
+  if(bt){
+    bt.classList.toggle('on', !!st.running);
+    bt.title = st.running
+      ? ('TUN 接管运行中，PID ' + st.pid + '（点击停止）')
+      : (st.portMatch ? '点击启动 TUN 接管'
+                      : '配置里的 socks5 端口与本程序监听的 ' + st.expectSocks + ' 不一致，先去「TUN 设置」改');
+  }
+  const mb = $('#btnMihomo');
+  if(mb) mb.title = 'TUN 的状态详情、配置和权限';
+  const head = $('#mHead');
+  if(!head) return;
+  const state = st.running
+    ? '<b style="color:var(--green)">运行中</b>'
+    : '<b style="color:var(--dim)">未运行</b>' + (st.exitErr ? '<span style="color:var(--red)"> · 上次退出异常</span>' : '');
+  head.innerHTML = '<div class="mstat">'+
+      '<div>状态'+state+'</div>'+
+      '<div>PID<b>'+(st.running?st.pid:'-')+'</b></div>'+
+      '<div>运行时长<b>'+(st.running?st.uptimeSec+' s':'-')+'</b></div>'+
+      '<div>版本<b>'+esc((st.version||'未知').slice(0,42))+'</b></div>'+
+      '<div>SOCKS5 出站<b style="color:'+(st.portMatch?'var(--green)':'var(--red)')+'">'+
+        esc(st.socks5||'（配置里没有 socks5 代理）')+(st.portMatch?' ✓':' ✗')+'</b></div>'+
+      '<div>本程序监听<b>'+esc(st.expectSocks)+'</b></div>'+
+      '<div>TUN<b>'+(st.tun?'已开启':'未开启')+'</b></div>'+
+      '<div>本进程权限<b style="color:'+(st.elevated?'var(--green)':'var(--red)')+'">'+
+        (st.elevated?'管理员':'普通用户')+'</b></div>'+
+      '<div>运行目录<b>'+esc(st.dir)+'</b></div>'+
+    '</div>'+
+    (st.portMatch ? '' : '<div class="warnbox">配置里的 SOCKS5 出站指向 '+esc(st.socks5||'空')+
+      '，而本程序监听的是 '+esc(st.expectSocks)+'，流量不会到达页面。改完配置记得重启 mihomo。</div>')+
+    (!st.elevated ? '<div class="warnbox">当前是<b>普通权限</b>运行，TUN 模式需要管理员权限（要建虚拟网卡、改路由表）。'+
+      '请关掉本程序，右键「以管理员身份运行」再试。</div>' : '')+
+    (st.exitErr ? '<div class="warnbox">上次退出：'+esc(st.exitErr)+'</div>' : '')+
+    '<div class="opts" style="padding:11px 16px;border-bottom:1px solid var(--line)">'+
+      '<button class="btn '+(st.running?'':'gold')+'" id="mStart"'+(st.running?' disabled':'')+'>启动</button>'+
+      '<button class="btn" id="mStop"'+(st.running?'':' disabled')+'>停止</button>'+
+      '<button class="btn" id="mRestart"'+(st.running?'':' disabled')+'>重启</button>'+
+      '<button class="btn" id="mOpenDir">打开运行目录</button>'+
+    '</div>';
+
+  const act = async (url, label) => {
+    const data = await (await fetch(url, {method:'POST'})).json();
+    if(data.ok === false){ toast(label+'失败：'+data.error, 'bad'); }
+    else { toast(label+'成功', 'good'); }
+    if(data.status) renderMihomo(data.status); else loadMihomo();
+  };
+  const s = $('#mStart'); if(s) s.onclick = () => act('/api/mihomo/start','启动');
+  const t = $('#mStop'); if(t) t.onclick = () => act('/api/mihomo/stop','停止');
+  const r = $('#mRestart');
+  if(r) r.onclick = async () => {
+    if(st.running) await fetch('/api/mihomo/stop', {method:'POST'});
+    await act('/api/mihomo/start','重启');
+  };
+  const o = $('#mOpenDir');
+  if(o) o.onclick = async () => {
+    const d = await (await fetch('/api/mihomo/open-dir', {method:'POST'})).json();
+    if(d.ok === false) toast('打开目录失败：'+d.error, 'bad');
+  };
+}
+async function loadMihomoLog(reset){
+  try{
+    const d = await (await fetch('/api/mihomo/log?since=' + (reset?0:(S.mlogTotal||0)))).json();
+    appendMLog(d.lines || []);
+    S.mlogTotal = d.total;
+  }catch(e){}
+}
+function appendMLog(lines){
+  const el = $('#mlog');
+  if(!el || !lines || !lines.length) return;
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  el.textContent += lines.join('\n') + '\n';
+  const all = el.textContent.split('\n');
+  if(all.length > 800) el.textContent = all.slice(all.length - 800).join('\n');
+  if(nearBottom) el.scrollTop = el.scrollHeight;
+}
+
+/* ---------------- 顶栏 ---------------- */
+async function loadStatus(){
+  try{
+    S.status = await (await fetch('/api/status')).json();
+    renderChips();
+    if(S.status.mihomo) renderMihomo(S.status.mihomo);
+    updateStat();
+  }catch(e){}
+}
+
+// 顶栏那几个 chip。单独拎出来是因为屏蔽/透传名单变了也要重画，
+// 不能只在轮询到状态时才更新。
+function renderChips(){
+  const st = S.status;
+  if(!st || !st.web) return;
+  $('#chips').innerHTML =
+    '<span class="chip"><b>控制台</b> '+esc(st.web.replace('http://',''))+'</span>'+
+    (st.socks?'<span class="chip"><b>SOCKS5</b> '+esc(st.socks)+'</span>':'')+
+    (st.http?'<span class="chip"><b>HTTP</b> '+esc(st.http)+'</span>':'')+
+    '<span class="chip">根证书 <button id="caDl">下载</button><button id="caIn">一键安装</button></span>'+
+    (st.caInstalled
+      ? '<span class="chip ok">根证书已安装</span>'
+      : '<span class="chip warn">首次运行请先安装根证书，否则 HTTPS 无法解析</span>')+
+    // 注意这个 id 不能叫 tunList：抽屉里的内容容器已经占用了那个名字，
+    // 重名会让 $('#tunList') 选中顶栏这个按钮（文档里第一个匹配），
+    // 于是列表被写进按钮里——抽屉看起来是空的，内容却跑到顶栏去了
+    (st.tunnelAuto
+      ? '<span class="chip warn">中间人失败过 <button id="tunAutoBtn">'+st.tunnelAuto+' 个域名已自动透传</button></span>'
+      : '')+
+    (S.blocked.length
+      ? '<span class="chip warn">已屏蔽 <button id="blkBtn">'+S.blocked.length+' 个域名</button></span>'
+      : '');
+
+  $('#caDl').onclick = () => { location.href = '/api/ca.crt'; };
+  $('#caIn').onclick = async () => {
+    const res = await fetch('/api/ca/install', {method:'POST'});
+    const d = await res.json();
+    toast(d.ok ? '根证书已导入受信任根' : ('导入失败：'+(d.hint||d.message||'')), d.ok?'good':'bad');
+    loadStatus();   // 装完让提示条立刻变成「已安装」
+  };
+  const tl = $('#tunAutoBtn');
+  if(tl) tl.onclick = openTunnel;
+  const bl = $('#blkBtn');
+  if(bl) bl.onclick = openBlocked;
+}
+async function reload(){
+  try{
+    const d = await (await fetch('/api/records?limit=600')).json();
+    S.recs.clear(); S.order = []; S.els.clear();
+    addRecords((d.records||[]).slice().reverse());
+  }catch(e){}
+}
+
+/* ---------------- 事件绑定 ---------------- */
+$('#rows').addEventListener('click', e => {
+  const el = e.target.closest('.row');
+  if(el) showDetail(Number(el.dataset.id));
+});
+$('#rows').addEventListener('contextmenu', e => {
+  const el = e.target.closest('.row');
+  if(!el) return;
+  const r = S.recs.get(Number(el.dataset.id));
+  if(!r) return;
+  e.preventDefault();
+  showCtxMenu(e.clientX, e.clientY, r);
+});
+document.addEventListener('click', hideCtxMenu);
+document.addEventListener('scroll', hideCtxMenu, true);
+$('#rows').addEventListener('scroll', hideCtxMenu);
+$('#q').oninput = e => { S.q = e.target.value.trim().toLowerCase(); rerender(); };
+$('#segKind').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  S.kind = b.dataset.k;
+  $('#segKind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  rerender();
+};
+$('#btnClear').onclick = async () => {
+  await fetch('/api/records/clear', {method:'POST'});
+  S.recs.clear(); S.order=[]; S.els.clear(); S.sel=0;
+  $('#detail').innerHTML = '<div class="empty">从左侧选择一条记录</div>';
+  rerender();
+};
+$('#btnRules').onclick = openDrawer;
+$('#btnMihomo').onclick = openMihomo;
+$('#btnLog').onclick = openLog;
+// 顶栏这个开关是 TUN 接管的启停。
+//（原来是"暂停记录列表"，但对一个监控工具来说，暂停自己反而把该看的东西挡掉了。）
+$('#btnTun').onclick = async () => {
+  const st = S.mihomo || (S.status && S.status.mihomo) || {};
+  const starting = !st.running;
+  const btn = $('#btnTun');
+  btn.disabled = true;
+  try{
+    const d = await (await fetch('/api/mihomo/' + (starting ? 'start' : 'stop'), {method:'POST'})).json();
+    if(d.ok === false){
+      toast((starting ? '启动' : '停止') + ' TUN 失败：' + d.error, 'bad');
+    } else {
+      toast(starting ? 'TUN 接管已启动' : 'TUN 接管已停止', 'good');
+    }
+    if(d.status) renderMihomo(d.status);
+    loadMihomo();
+  }catch(e){
+    toast('操作失败：' + e.message, 'bad');
+  }
+  btn.disabled = false;
+};
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    $('#mask').classList.remove('open'); $('#mask').innerHTML='';
+    $('#drawer').classList.remove('open');
+    $('#mdrawer').classList.remove('open');
+    $('#ldrawer').classList.remove('open');
+    $('#tdrawer').classList.remove('open');
+    $('#bdrawer').classList.remove('open');
+    hideCtxMenu();
+  }
+  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    const idx = S.order.indexOf(S.sel);
+    if(idx < 0) return;
+    const next = S.order[idx + (e.key==='ArrowDown'? -1 : 1)];
+    if(next != null){ showDetail(next); e.preventDefault(); }
+  }
+});
+
+loadStatus();
+setInterval(loadStatus, 4000);
+loadRules();
+loadBlocked();
+reload();
+connect();
+</script>
+</body>
+</html>

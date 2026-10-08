@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  netlens 的应用程序清单。
+
+  关键就是下面 requestedExecutionLevel 那一行：
+  level="requireAdministrator" 会让 Windows 在双击时弹 UAC，并在资源管理器里
+  给图标加一个盾牌角标。
+
+  为什么需要管理员：
+    - mihomo 的 TUN 模式要创建虚拟网卡、改路由表
+    - 把根证书装进「受信任的根证书颁发机构」
+  不用管理员也能跑（只抓 HTTP 代理/不装证书），那种情况下用
+  `go build -tags noadmin` 编译，就不带这个清单。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.0.0.0" processorArchitecture="*" name="netlens" type="win32"/>
+  <description>netlens 流量控制台</description>
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

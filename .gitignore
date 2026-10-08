@@ -1,0 +1,5 @@
+netlens.exe
+netlens-noadmin.exe
+tools/windowcheck/windowcheck.exe
+*.log
+*.tmp

@@ -1,0 +1,48 @@
+# 全量接管：所有进程的流量都交给 netlens
+
+mixed-port: 7890
+
+mode: rule
+
+allow-lan: false
+
+# 全量代理之后 debug 会把日志刷爆（netlens 页面上那个日志面板也会被淹没），info 足够
+log-level: info
+
+# PROCESS-NAME 规则依赖这一项；always = 每条连接都去查属主进程
+find-process-mode: always
+
+tun:
+  enable: true
+  stack: system
+  auto-route: true
+  auto-detect-interface: true
+
+# 嗅探 TLS SNI / HTTP Host，把目标从 IP 还原回域名。
+# TUN 模式下是 App 自己解析域名、连的是 IP，不嗅探的话 netlens 页面上只能看到一串 IP。
+sniffer:
+  enable: true
+  override-destination: true
+  sniff:
+    HTTP:
+      ports: [80, 8080, 8000, 8888]
+    TLS:
+      ports: [443, 8443]
+
+proxies:
+  - name: "LOCAL-SOCKS5"
+    type: socks5
+    server: 127.0.0.1
+    port: 1080
+    udp: false          # netlens 的 SOCKS5 只支持 TCP，别让它去试 UDP（QUIC 会自然回落到 TCP）
+
+rules:
+  # ⚠️ 这两条绝对不能删。
+  # netlens / mihomo 自己的出站如果也被下面的 MATCH 接管，
+  # 就变成 netlens → mihomo → netlens 的无限递归，几秒内把机器打满。
+  # 如果给 netlens.exe 改过名字，这里要跟着改。
+  - PROCESS-NAME,netlens.exe,DIRECT
+  - PROCESS-NAME,mihomo.exe,DIRECT
+
+  # 从这里往下：其余全部交给 netlens
+  - MATCH,LOCAL-SOCKS5
